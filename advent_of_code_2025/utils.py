@@ -1,6 +1,7 @@
+import itertools
 import string
 from collections.abc import Iterable, Callable
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from scipy import signal
@@ -55,6 +56,9 @@ class Stream[T](Iterable[T]):
     def map[R](self, function: Callable[[T], R]):
         return Stream(map(function, self._value))
 
+    def enumerated_map[R](self, function: Callable[[int, T], R]):
+        return Stream(map(lambda arg: function(arg[0], arg[1]), enumerate(self._value)))
+
     def sum(self):
         return Item(sum(self._value))
 
@@ -62,7 +66,7 @@ class Stream[T](Iterable[T]):
         stream: Stream[T] = Stream(reversed(self._value))
         return stream
 
-    def collect(self):
+    def to_list(self):
         return list(self._value)
 
     def split(self, delimiter: T, limit=-1):
@@ -93,19 +97,29 @@ class Stream[T](Iterable[T]):
         for item in self._value:
             function(item)
 
+    def to_matrix(self):
+        return Matrix(self._value)
+
+
+def get_input_lines():
+    with open("input") as f:
+        return f.readlines()
+
 
 def iterate_input_lines():
-    with open("input") as f:
-        lines = f.readlines()
-    return Stream(lines)
+    return Stream(get_input_lines())
 
 
 class Matrix:
     @classmethod
-    def from_input(cls):
+    def from_input(cls, fill: str = " "):
         with open("input") as f:
             lines = f.readlines()
-        return Matrix(list(map(lambda line: list(line[:-1]), lines)))
+        lines = list(map(lambda l: list(l[:-1]), lines))
+        length = max(*map(len, lines))
+        for line in lines:
+            line.extend([fill] * (length - len(line)))
+        return Matrix(lines)
 
     def __init__(self, matrix, trace=()):
         self.matrix = np.array(matrix)
@@ -114,7 +128,7 @@ class Matrix:
     def translate(self, dictionary: dict):
         return self.map(dictionary.get)
 
-    def convolve(self, mask, mode="same"):
+    def convolve(self, mask, mode: Literal["full", "same", "valid"] = "same"):
         matrix = signal.convolve2d(self.matrix, mask, mode=mode)
         return Matrix(matrix, self._trace)
 
@@ -145,3 +159,25 @@ class Matrix:
             return Matrix(self.matrix * other.matrix)
         else:
             raise TypeError
+
+    def transpose(self):
+        return Matrix(np.transpose(self.matrix), self._trace)
+
+    def to_stream(self):
+        return Stream(self.matrix.tolist())
+
+    def split_horizontal(self, value: Any = " "):
+        is_value: np.ndarray = self.matrix == value
+        row_sum = is_value.sum(axis=1)
+        delimiters = np.argwhere(row_sum == self.matrix.shape[1]).flatten().tolist()
+        parts = [self.matrix[:delimiters[0]]] + [
+            self.matrix[a+1:b]
+            for a, b in itertools.pairwise(delimiters)
+        ] + [self.matrix[delimiters[-1]+1:]]
+        return Stream(parts).map(Matrix)
+
+    def split_vertical(self, value: Any = " "):
+        return self.transpose().split_horizontal(value).map(lambda x: x.transpose())
+
+    def to_list(self) -> list[list]:
+        return self.matrix.tolist()

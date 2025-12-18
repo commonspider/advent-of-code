@@ -2,7 +2,7 @@ from contextlib import suppress
 
 from advent_of_code_2025.utils import iterate_input_lines, Stream
 
-digits = Stream.digits().reverse().collect()
+digits = Stream.digits().reverse().to_list()
 
 def get_largest_joltage(line: str) -> int:
     a = -1
